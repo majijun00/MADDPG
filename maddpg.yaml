@@ -1,0 +1,100 @@
+dl_toolbox: "torch"  # The deep learning toolbox. Choices: "torch", "mindspore", "tensorlayer"
+project_name: "pythonProject-masac"
+logger: "tensorboard"  # Choices: tensorboard, wandb.
+wandb_user_name: "your_user_name"
+render: False
+render_mode: 'rgb_array' # Choices: 'human', 'rgb_array'.
+test_mode: False
+
+
+agent: "MASAC"  # the learning algorithms_marl
+env_name: "MicrogridEnvContinuous"  # This should be the class name of your custom environment
+env_id: "env_xuance"
+env_seed: 1
+continuous_action: True
+learner: "MASAC_Learner"
+policy: "Gaussian_MASAC_Policy"
+representation: "Basic_Identical"
+vectorize: "DummyVecMultiAgentEnv"
+runner: "MARL"
+device: "cpu"  # 使用CPU作为设备
+num_agents: 3  # 或者根据实际智能体的数量调整
+fps : 50
+
+
+
+representation_hidden_size: []  # the units for each hidden layer
+actor_hidden_size: [128, 64]  #[64,64], [256,256]
+critic_hidden_size: [128, 64]  #[64,64], [256,256]
+activation: 'leaky_relu'
+activation_action: 'sigmoid'
+use_parameter_sharing: True
+use_actions_mask: False
+distributed_training: False
+
+
+seed: 1
+parallels: 16
+buffer_size: 100000
+batch_size: 256  #[256, 128, 64]
+learning_rate_actor: 0.01  # learning rate for actor[0.01, 0.005, 0.001]
+learning_rate_critic: 0.001  # learning rate for critic[0.001, 0.0005, 0.001]
+gamma: 0.95  # discount factor[0.95, 0.99]
+tau: 0.001  # soft update for target networks[0.001, 0.0005, 0.005]
+alpha: 0.01
+use_automatic_entropy_tuning: True
+
+start_training: 10  # start training after n episodes [100, 10]
+running_steps: 500 #3000个episode
+#running_steps: 720 #3000个episode
+training_frequency: 25   #[25, 50, 100]
+
+use_grad_clip: True
+grad_clip_norm: 0.5
+
+eval_interval: 50  #[100, 500, 1000]
+test_episode: 5
+
+log_dir: "./logs/masac/"
+model_dir: "./models/masac/"
+
+# Add configuration for MicrogridEnvContinuous
+microgrid:
+  wind_data_1: [156.0, 139.2, 158.0, 170.5, 161.0, 144.4, 134.0, 123.6, 116.3, 124.6, 146.6, 152.8, 152.8, 174.7, 173.6, 178.8, 191.4, 196.5, 211.2, 193.4, 188.2, 160.0, 154.9, 154.9]
+  pv_data_1: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 66.0, 82.4, 105.2, 121.7, 133.6, 141.2, 156.5, 152.1, 143.4, 132.5, 122.7, 102.0, 83.4, 65.4, 0.0, 0.0, 0.0, 0.0]
+  load_data_1: [176.2, 126.4, 149.1, 133.7, 140.0, 157.9, 180.0, 202.1, 241.0, 280.9, 310.2, 305.7, 349.9, 368.4, 358.2, 348.3, 391.6, 471.9, 309.6, 281.0, 297.7, 204.5, 260.9, 197.8]
+
+  wind_data_2: [233.2, 240.4, 249.3, 256.3, 242.2, 229.7, 197.8, 183.6, 165.8, 164.2, 167.6, 172.9, 194.3, 181.8, 199.5, 213.8, 203.1, 229.7, 224.5, 235.0, 245.7, 249.3, 243.9, 238.6]
+  pv_data_2: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 80.7, 103.7, 132.2, 149.9, 160.6, 176.5, 194.3, 183.6, 171.2, 155.3, 141.0, 123.3, 100.3, 0.0, 0.0, 0.0, 0.0, 0.0]
+  load_data_2: [344.0, 281.2, 274.1, 286.4, 259.8, 245.7, 283.0, 313.1, 325.5, 343.1, 300.7, 366.3, 366.6, 375.2, 444.6, 486.6, 489.5, 466.4, 366.9, 376.2, 373.0, 358.4, 364.3, 323.8]
+
+  wind_data_3: [258.7, 272.2, 277.8, 286.7, 273.3, 259.9, 245.4, 234.2, 232.0, 226.4, 220.8, 237.6, 228.6, 236.4, 261.0, 256.6, 269.9, 264.4, 271.1, 276.6, 269.9, 263.3, 266.5, 267.7]
+  pv_data_3: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 95.6, 116.9, 148.1, 178.4, 194.0, 210.7, 236.4, 215.3, 199.5, 183.9, 154.8, 131.4, 114.6, 0.0, 0.0, 0.0, 0.0, 0.0]
+  load_data_3: [299.1, 223.1, 196.2, 205.2, 285.6, 337.0, 348.2, 354.8, 366.0, 397.5, 367.2, 377.3, 423.3, 403.1, 408.1, 427.9, 424.3, 411.3, 529.6, 518.0, 421.9, 432.6, 425.9, 351.2]
+
+price_buy: [0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 1.21, 1.21, 1.52, 1.52, 1.52, 1.52, 1.21, 1.21, 1.21, 1.21, 1.21, 1.52, 1.52, 1.52, 1.52, 1.52, 0.65]
+price_sell: [0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4]
+price_exchange_buy: [0.41, 0.41, 0.41, 0.41, 0.41, 0.41, 0.41, 0.46, 0.46, 0.51, 0.51, 0.51, 0.51, 0.46, 0.46, 0.46, 0.46, 0.46, 0.51, 0.51, 0.51, 0.51, 0.51, 0.41]
+price_exchange_sell: [0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4]
+
+fuel_cost_coeff: [0.04, 0.94, 0.157]
+emission_rates:
+    CO2: 750
+    SO2: 0.041
+    NOx: 0.26
+zhili:
+    CO2: 0.0123
+    SO2: 1.25
+    NOx: 2.5
+
+  # 微电网每个动作空间
+microgrid_1_action_low: [-50, -70, 0, -70]
+microgrid_1_action_high: [50, 70, 120, 70]
+microgrid_2_action_low: [-50, -70, 0, -70]
+microgrid_2_action_high: [50, 70, 100, 70]
+microgrid_3_action_low: [-50, -70, 0, -70]
+microgrid_3_action_high: [50, 70, 80, 70]
+
+eta_B_min: 0.2
+eta_B_max: 0.9
+W_B: 150
