@@ -1,0 +1,223 @@
+import numpy as np
+from gym.spaces import Box
+from xuance.environment import RawMultiAgentEnv
+
+class MicrogridEnvContinuous(RawMultiAgentEnv):
+    def __init__(self, env_config):
+        super(MicrogridEnvContinuous, self).__init__()
+
+        self.env_id = env_config.env_id
+        self.num_agents = 3
+        self.agents = [f"microgrid_{i}" for i in range(self.num_agents)]
+        # 从 config 中提取参数
+        self.d_t = 1
+        self.eta_B_min = env_config.eta_B_min
+        self.eta_B_max = env_config.eta_B_max
+        self.W_B = env_config.W_B
+
+        # 从 env_config 中读取数据
+        self.wind_data = {
+            "microgrid_0": env_config.microgrid.wind_data_1,
+            "microgrid_1": env_config.microgrid.wind_data_2,
+            "microgrid_2": env_config.microgrid.wind_data_3,
+        }
+
+        self.pv_data = {
+            "microgrid_0": env_config.microgrid.pv_data_1,
+            "microgrid_1": env_config.microgrid.pv_data_2,
+            "microgrid_2": env_config.microgrid.pv_data_3,
+        }
+
+        self.load_data = {
+            "microgrid_0": env_config.microgrid.load_data_1,
+            "microgrid_1": env_config.microgrid.load_data_2,
+            "microgrid_2": env_config.microgrid.load_data_3,
+        }
+
+        # 电价数据
+        self.price_buy = np.array(env_config.price_buy)
+        self.price_sell = np.array(env_config.price_sell)
+        self.price_exchange_buy = np.array(env_config.price_exchange_buy)
+        self.price_exchange_sell = np.array(env_config.price_exchange_sell)
+
+        # 其他配置项
+        self.max_episode_steps = 24  # 24小时数据
+        self.current_step = 0
+        self.c_p = 10  # 惩罚系数
+
+        self.fuel_cost_coeff = env_config.fuel_cost_coeff
+        self.emission_rates = env_config.emission_rates
+        self.zhili = env_config.zhili
+        self.env_cost_coeff = sum(
+            (getattr(self.emission_rates, pollutant) / 1000) * getattr(self.zhili, pollutant)
+            for pollutant in vars(self.emission_rates)
+        )
+
+        # 动作空间
+        self.microgrid_1_action_space = Box(low=np.array(env_config.microgrid_1_action_low), high=np.array(env_config.microgrid_1_action_high), dtype=np.float32)
+        self.microgrid_2_action_space = Box(low=np.array(env_config.microgrid_2_action_low), high=np.array(env_config.microgrid_2_action_high), dtype=np.float32)
+        self.microgrid_3_action_space = Box(low=np.array(env_config.microgrid_3_action_low), high=np.array(env_config.microgrid_3_action_high), dtype=np.float32)
+
+        # 全局状态空间 (Global State Space)
+        self.state_space = Box(low=-np.inf, high=np.inf, shape=(27,), dtype=np.float32)
+
+        # 动作空间（确保每个智能体都有独立的动作空间）
+        self.action_space = {
+            agent: Box(low=np.array([-50, -70, 0, -70]), high=np.array([50, 70, 120, 70]), dtype=np.float32)
+            for agent in self.agents
+        }
+        # 每个智能体的独立观察空间
+        self.observation_space = {agent: Box(low=0, high=np.inf, shape=(9,), dtype=np.float32)
+            for agent in self.agents
+        }
+        #print("env_config:", env_config)
+        #print("env_config.microgrid:", getattr(env_config, 'microgrid', None))
+
+        #print(f"Observation Space: {self.observation_space}")
+        #print(f"Action Space: {self.action_space}")
+        #print("Emission Rates:", self.emission_rates)
+        #print("Zhili:", self.zhili)
+
+    def get_env_info(self):
+        return {
+            'state_space': self.state_space,
+            'observation_space': self.observation_space,
+            'action_space': self.action_space,
+            'agents': self.agents,
+            'num_agents': self.num_agents,
+            'max_episode_steps': self.max_episode_steps
+        }
+
+    def avail_actions(self):
+        """Returns available actions for each agent."""
+        return None  # You can define specific logic here if necessary.
+
+    def agent_mask(self):
+        """Returns mask indicating which agents are alive."""
+        return {agent: True for agent in self.agents}
+
+    def state(self):
+        return np.concatenate([self.observation_space[agent].sample() for agent in self.agents])
+
+    def reset(self):
+        self.current_step = 0
+        observation = {agent: self.observation_space[agent].sample() for agent in self.agents}
+        return observation, {}
+
+    def _normalize_state(self, agent, current_step):
+        """标准化每个微电网的状态。"""
+        data = {
+            "pv_data": self.pv_data[agent],
+            "wind_data": self.wind_data[agent],
+            "load_data": self.load_data[agent],
+            "price_buy": self.price_buy,
+            "price_sell": self.price_sell,
+            "price_exchange_buy": self.price_exchange_buy,
+            "price_exchange_sell": self.price_exchange_sell
+        }
+
+        # 避免除以零，添加小的常数（1e-8）
+        def safe_max(array):
+            return max(np.max(array), 1e-8)
+
+        # 归一化数据
+        normalized_state = np.array([
+            data["pv_data"][current_step] / safe_max(data["pv_data"]),
+            data["wind_data"][current_step] / safe_max(data["wind_data"]),
+            data["load_data"][current_step] / safe_max(data["load_data"]),
+            self.P_die_last if hasattr(self, 'P_die_last') else 0,  # 柴油发电机的前一状态
+            current_step / self.max_episode_steps,  # 当前步数的归一化
+            data["price_buy"][current_step] / safe_max(data["price_buy"]),
+            data["price_sell"][current_step] / safe_max(data["price_sell"]),
+            data["price_exchange_buy"][current_step] / safe_max(data["price_exchange_buy"]),
+            data["price_exchange_sell"][current_step] / safe_max(data["price_exchange_sell"]),
+        ], dtype=np.float32)
+
+        return normalized_state
+
+    def step(self, action_dict):
+        if self.current_step >= self.max_episode_steps:
+            # 当达到最大时间步时，直接返回终止状态
+            observation = {agent: self.observation_space[agent].sample() for agent in self.agents}
+            rewards = {agent: 0 for agent in self.agents}  # 或根据需要设置奖励
+            terminated = {agent: True for agent in self.agents}
+            truncated = True
+            info = {}
+            return observation, rewards, terminated, truncated, info
+
+        # 继续正常步骤
+        self.current_step += 1
+        observation = {agent: self.observation_space[agent].sample() for agent in self.agents}
+        rewards = {agent: np.random.random() for agent in self.agents}
+        terminated = {agent: False for agent in self.agents}
+        truncated = False
+        info = {}
+        return observation, rewards, terminated, truncated, info
+
+    def _step_microgrid(self, agent, action):
+        """根据微电网的动作计算状态和奖励。"""
+        if agent == "microgrid_0":
+            action_space = self.microgrid_1_action_space
+        elif agent == "microgrid_1":
+            action_space = self.microgrid_2_action_space
+        elif agent == "microgrid_2":
+            action_space = self.microgrid_3_action_space
+
+        # 执行微电网动作并计算奖励
+        P_B_t, P_g_t, P_die_t, P_exchange = np.clip(action, action_space.low, action_space.high)
+        reward = self._compute_reward(agent, P_B_t, P_g_t, P_die_t, P_exchange)
+
+        # 更新状态
+        state = self._normalize_state(agent, self.current_step)
+        return state, reward
+
+    def _compute_reward(self, agent, P_B_t, P_g_t, P_die_t, P_exchange):
+        """计算每个微电网的奖励。"""
+        # 获取当前智能体的数据
+        pv_data = self.pv_data[agent]
+        wind_data = self.wind_data[agent]
+        load_data = self.load_data[agent]
+
+        # 1. 计算功率不平衡和惩罚
+        index = min(self.current_step, self.max_episode_steps - 1)
+        imbalance = P_B_t + P_g_t + wind_data[index] + pv_data[index] - load_data[index] + P_exchange
+
+        #imbalance = P_B_t + P_g_t + wind_data[self.current_step] + pv_data[self.current_step] - load_data[
+         #   self.current_step] + P_exchange
+        imbalance_penalty = abs(imbalance) * 10
+
+        # 2. 电网购电和售电成本
+        cost = 0
+        if P_g_t > 0:
+            cost += P_g_t * self.price_buy[self.current_step]  # 从电网购电
+        elif P_g_t < 0:
+            cost -= P_g_t * self.price_sell[self.current_step]  # 向电网售电
+
+        # 3. 微电网间的电力交易成本
+        cost_exchange = 0
+        if P_exchange > 0:
+            cost_exchange += P_exchange * self.price_exchange_buy[self.current_step]  # 买入电力
+        elif P_exchange < 0:
+            cost_exchange -= P_exchange * self.price_exchange_sell[self.current_step]  # 卖出电力
+
+        # 4. 柴油发电机的燃料成本
+        C_fuel = self.fuel_cost_coeff[0] * (P_die_t ** 2) + self.fuel_cost_coeff[1] * P_die_t + self.fuel_cost_coeff[2]
+
+        # 5. 环境成本
+        C_env = self.env_cost_coeff * P_die_t
+
+        # 6. 最终奖励
+        reward = -(cost + cost_exchange + imbalance_penalty + C_fuel + C_env)
+        return reward
+
+    def render(self, mode='human'):
+        """
+        Render the environment (disabled, does nothing).
+        :param mode: The rendering mode (e.g., 'human', 'rgb_array')
+        """
+        # 什么都不做，直接返回
+        pass
+
+    def close(self):
+        """关闭环境"""
+        pass
